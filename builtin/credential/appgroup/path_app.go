@@ -251,6 +251,7 @@ func appPaths(b *backend) []*framework.Path {
 			},
 			Callbacks: map[logical.Operation]framework.OperationFunc{
 				logical.ReadOperation: b.pathAppSecretIDRead,
+				logical.ListOperation: b.pathAppSecretIDList,
 			},
 			HelpSynopsis:    strings.TrimSpace(appHelp["app-secret-id"][0]),
 			HelpDescription: strings.TrimSpace(appHelp["app-secret-id"][1]),
@@ -297,6 +298,34 @@ func (b *backend) pathAppList(
 		return nil, err
 	}
 	return logical.ListResponse(apps), nil
+}
+
+// pathAppSecretIDList is used to list all the Apps registered with the backend.
+func (b *backend) pathAppSecretIDList(
+	req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
+	// Get the "custom" lock
+	lock := b.getSecretIDLock("")
+	lock.RLock()
+	defer lock.RUnlock()
+
+	appName := data.Get("app_name").(string)
+	if appName == "" {
+		return logical.ErrorResponse("missing app_name"), nil
+	}
+
+	app, err := b.appEntry(req.Storage, strings.ToLower(appName))
+	if err != nil {
+		return nil, err
+	}
+	if app == nil {
+		return logical.ErrorResponse(fmt.Sprintf("app %s does not exist", appName)), nil
+	}
+
+	secrets, err := req.Storage.List(fmt.Sprintf("secret_id/%s", b.salt.SaltID(app.SelectorID)))
+	if err != nil {
+		return nil, err
+	}
+	return logical.ListResponse(secrets), nil
 }
 
 // setAppEntry grabs a write lock and stores the options on an App into the storage

@@ -290,6 +290,7 @@ addition to those, a set of policies can be assigned using this.
 			},
 			Callbacks: map[logical.Operation]framework.OperationFunc{
 				logical.ReadOperation: b.pathGroupSecretIDRead,
+				logical.ListOperation: b.pathGroupSecretIDList,
 			},
 			HelpSynopsis:    strings.TrimSpace(groupHelp["group-secret-id"][0]),
 			HelpDescription: strings.TrimSpace(groupHelp["group-secret-id"][1]),
@@ -336,6 +337,34 @@ func (b *backend) pathGroupList(
 		return nil, err
 	}
 	return logical.ListResponse(groups), nil
+}
+
+// pathGroupSecretIDList is used to list all the Apps registered with the backend.
+func (b *backend) pathGroupSecretIDList(
+	req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
+	// Get the "custom" lock
+	lock := b.getSecretIDLock("")
+	lock.RLock()
+	defer lock.RUnlock()
+
+	groupName := data.Get("group_name").(string)
+	if groupName == "" {
+		return logical.ErrorResponse("missing group_name"), nil
+	}
+
+	group, err := b.appEntry(req.Storage, strings.ToLower(groupName))
+	if err != nil {
+		return nil, err
+	}
+	if group == nil {
+		return logical.ErrorResponse(fmt.Sprintf("group %s does not exist", groupName)), nil
+	}
+
+	secrets, err := req.Storage.List(fmt.Sprintf("secret_id/%s", b.salt.SaltID(group.SelectorID)))
+	if err != nil {
+		return nil, err
+	}
+	return logical.ListResponse(secrets), nil
 }
 
 // setAppEntry grabs a write lock and stores the options on a Group into the storage
